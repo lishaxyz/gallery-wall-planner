@@ -76,9 +76,10 @@ a{cursor:pointer}
   text-transform:uppercase; color:var(--sub); margin-bottom:8px;
 }
 .input-std{
-  width:100%; font-size:14px; font-weight:600; padding:9px 11px;
+  width:100%; font-size:16px; font-weight:600; padding:9px 11px;
   border-radius:9px; border:1px solid var(--border);
   background:var(--bg); color:var(--text);
+  touch-action:manipulation;
 }
 </style>
 </head>
@@ -98,10 +99,10 @@ a{cursor:pointer}
       <span id="save-dot" style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:#3a8a5e"></span>
       <span id="save-label">Saved</span>
     </div>
-    <button id="export-btn" style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid transparent;background:var(--accent);color:var(--at)">Export</button>
     <div style="position:relative;display:flex">
       <button id="menu-btn" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:var(--surface);color:var(--sub);font-size:19px;line-height:1;padding:0" aria-label="More options">⋯</button>
       <div id="menu-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 8px);min-width:172px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.2);padding:6px;z-index:10">
+        <button id="export-btn" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;font-size:13.5px;font-weight:600;padding:10px 11px;border-radius:8px;border:none;background:transparent;color:var(--text)"><span style="font-size:15px">↓</span>Export PNG</button>
         <button id="menu-reset-btn" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;font-size:13.5px;font-weight:600;padding:10px 11px;border-radius:8px;border:none;background:transparent;color:#b23b27"><span style="font-size:15px">↺</span>Start over</button>
       </div>
     </div>
@@ -281,6 +282,24 @@ class GWP {
     if (this._renderPending) return;
     this._renderPending = true;
     requestAnimationFrame(() => { this._renderPending = false; this.render(); });
+  }
+
+  // Update state without triggering a render — for input handlers
+  setStateSilent(patchOrFn) {
+    const patch = typeof patchOrFn === 'function' ? patchOrFn(this.state) : patchOrFn;
+    Object.assign(this.state, patch);
+  }
+
+  // Debounced render for input events — batches rapid keystrokes into one repaint
+  scheduleInputRender() {
+    clearTimeout(this._irt);
+    this._irt = setTimeout(() => this.render(), 120);
+  }
+
+  // Debounced persist for input events — avoids saving on every keystroke
+  scheduleInputPersist() {
+    clearTimeout(this._ipt);
+    this._ipt = setTimeout(() => this.persist(), 600);
   }
 
   // ── Geometry ─────────────────────────────────────────────
@@ -1282,16 +1301,26 @@ class GWP {
       const inp = e.target;
       if (!inp.id) return;
       const v = inp.value;
-      const sel = this.state.pieces.find(p => p.id === this.state.selectedId) || null;
-      if (inp.id === 'inp-w'           && sel) { this.updatePiece(sel.id, {w:v}); return; }
-      if (inp.id === 'inp-h'           && sel) { this.updatePiece(sel.id, {h:v}); return; }
-      if (inp.id === 'inp-frame-thick' && sel) { this.updatePiece(sel.id, {frameThickness:v}); return; }
-      if (inp.id === 'inp-mat-width'   && sel) { this.updatePiece(sel.id, {matWidth:v}); return; }
-      if (inp.id === 'inp-frame-color' && sel) { this.updatePiece(sel.id, {frameColor:v}); return; }
-      if (inp.id === 'inp-wall-w') { this.setState({wallW:v}, ()=>this.persist()); return; }
-      if (inp.id === 'inp-wall-h') { this.setState({wallH:v}, ()=>this.persist()); return; }
-      if (inp.id === 'inp-ref-w')  { this.setState({refW:v}, ()=>this.persist()); return; }
-      if (inp.id === 'inp-ref-h')  { this.setState({refH:v}, ()=>this.persist()); return; }
+      const sid = this.state.selectedId;
+      const patchPiece = patch => {
+        this.setStateSilent(s => ({ pieces: s.pieces.map(p => p.id===sid ? Object.assign({},p,patch) : p) }));
+        this.scheduleInputRender();
+        this.scheduleInputPersist();
+      };
+      const patchState = patch => {
+        this.setStateSilent(patch);
+        this.scheduleInputRender();
+        this.scheduleInputPersist();
+      };
+      if (inp.id === 'inp-w'           && sid) { patchPiece({w:v}); return; }
+      if (inp.id === 'inp-h'           && sid) { patchPiece({h:v}); return; }
+      if (inp.id === 'inp-frame-thick' && sid) { patchPiece({frameThickness:v}); return; }
+      if (inp.id === 'inp-mat-width'   && sid) { patchPiece({matWidth:v}); return; }
+      if (inp.id === 'inp-frame-color' && sid) { patchPiece({frameColor:v}); return; }
+      if (inp.id === 'inp-wall-w') { patchState({wallW:v}); return; }
+      if (inp.id === 'inp-wall-h') { patchState({wallH:v}); return; }
+      if (inp.id === 'inp-ref-w')  { patchState({refW:v}); return; }
+      if (inp.id === 'inp-ref-h')  { patchState({refH:v}); return; }
     });
     // Wire stable UI events
     el('export-btn').addEventListener('click', () => this.exportPng());
