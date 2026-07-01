@@ -1042,13 +1042,18 @@ class GWP {
   }
 
   renderPanel(S, sel, persp) {
-    // Save focus state so inputs don't lose cursor on re-render
     const ae = document.activeElement;
+    const content = el('panel-content');
+
+    // While the user is typing in a panel input, skip rebuilding the HTML —
+    // the input element would be destroyed and recreated every 120ms, causing lag on mobile.
+    // A blur listener (set up in init) triggers a fresh render when they leave the field.
+    if (ae && content.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
+
     const focusedId = ae && ae.id ? ae.id : null;
     const selStart = ae && ae.selectionStart != null ? ae.selectionStart : null;
     const selEnd   = ae && ae.selectionEnd   != null ? ae.selectionEnd   : null;
 
-    const content = el('panel-content');
     let html = '';
 
     if (S.panelView === 'list' || (!sel && S.panelView === 'piece')) {
@@ -1296,6 +1301,9 @@ class GWP {
         return;
       }
     });
+
+    // Rebuild panel when user leaves an input field
+    el('panel-content').addEventListener('blur', () => this.scheduleRender(), true);
 
     el('panel-content').addEventListener('input', e => {
       const inp = e.target;
